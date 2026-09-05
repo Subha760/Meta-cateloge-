@@ -30,6 +30,22 @@ function markupPrice(base) {
 }
 
 /**
+ * Matches store.choicematrix.in's URL pattern, confirmed from a live
+ * product page: https://store.choicematrix.in/product/trendy-womens-...
+ * The site slugifies the title — lowercase, non-alphanumeric to hyphens,
+ * collapsed/trimmed. If SheScale ever adds numeric suffixes for duplicate
+ * titles, this won't catch that — spot-check a few generated links after
+ * deploy against the live site.
+ */
+function slugify(title) {
+  return String(title)
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
  * Fetches the full product list from SheScale, paging through /products
  * since it's paginated (limit/page), same as the WooCommerce plugin does.
  */
@@ -116,39 +132,67 @@ async function syncPriceToShop(productId, price) {
 }
 
 /**
- * Maps a single SheScale product object to Meta catalog fields.
+ * Maps a single SheScale product into one or more Meta catalog items —
+ * one item PER VARIANT (size/color), matching how store.choicematrix.in
+ * actually sells them (same model as the WooCommerce plugin's variable
+ * products). All variants of one product share item_group_id so Meta
+ * shows them as one listing with a size/colour picker, not duplicates.
+ *
  * Field names confirmed from the SheScale WooCommerce plugin:
  *   id, title, description, basePrice, images[], category.name, variants[]
  *   variant: { id, size, color, stockQuantity, isUnlimited }
  */
-function mapProductToMetaItem(product) {
-  const id = String(product.id);
+function mapProductToMetaItems(product) {
+  const productId = String(product.id);
   const title = product.title ?? '';
   const description = product.description ?? title;
   const basePrice = Number(product.basePrice ?? 0);
   const price = markupPrice(basePrice);
+  const priceStr = `${price.toFixed(2)} ${CURRENCY}`;
 
-  const variants = Array.isArray(product.variants) ? product.variants : [];
-  const totalStock = variants.length
-    ? variants.reduce((sum, v) => sum + (v.isUnlimited ? 1 : Number(v.stockQuantity || 0)), 0)
-    : 1; // if no variants, assume available
-
+  const link = `${SITE_BASE_URL}/product/${slugify(title)}`;
   const images = Array.isArray(product.images) ? product.images : [];
   const imageUrl = images[0];
-  const brand = product.category?.name ?? 'SheScale';
+  const additionalImages = images.slice(1, 11); // Meta allows up to 10 additional images
+  const category = product.category?.name;
+  const brand = category ?? 'SheScale';
 
-  return {
-    id,
+  const variants = Array.isArray(product.variants) ? product.variants : [];
+
+  const baseFields = {
     title,
     description,
-    availability: totalStock > 0 ? 'in stock' : 'out of stock',
     condition: 'new',
-    price: `${price.toFixed(2)} ${CURRENCY}`,
-    link: `${SITE_BASE_URL}/product/${id}`,
+    price: priceStr,
+    link,
     image_link: imageUrl,
+    additional_image_link: additionalImages,
     brand,
+    product_type: category,
     origin_country: DEFAULT_ORIGIN_COUNTRY,
   };
+
+  if (variants.length === 0) {
+    // No variants — single item, id = product id
+    return [{
+      id: productId,
+      ...baseFields,
+      availability: 'in stock', // no stock data to check against
+    }];
+  }
+
+  // One feed item per variant, grouped under item_group_id
+  return variants.map((v) => {
+    const stock = v.isUnlimited ? 1 : Number(v.stockQuantity || 0);
+    return {
+      id: `${productId}-${v.id}`,
+      item_group_id: productId,
+      ...baseFields,
+      availability: stock > 0 ? 'in stock' : 'out of stock',
+      color: v.color || undefined,
+      size: v.size || undefined,
+    };
+  });
 }
 
 /**
@@ -169,7 +213,7 @@ async function generateFeedXml() {
   }
 
   const items = products
-    .map(mapProductToMetaItem)
+    .flatMap(mapProductToMetaItems)
     // Drop anything missing a required field rather than let Meta reject the whole feed
     .filter((item) => item.id && item.title && item.link && item.image_link && item.price);
 
@@ -183,6 +227,7 @@ async function generateFeedXml() {
   for (const item of items) {
     const entry = doc.ele('item');
     entry.ele('g:id').txt(item.id).up();
+    if (item.item_group_id) entry.ele('g:item_group_id').txt(item.item_group_id).up();
     entry.ele('g:title').txt(item.title).up();
     entry.ele('g:description').txt(item.description).up();
     entry.ele('g:availability').txt(item.availability).up();
@@ -190,7 +235,13 @@ async function generateFeedXml() {
     entry.ele('g:price').txt(item.price).up();
     entry.ele('g:link').txt(item.link).up();
     entry.ele('g:image_link').txt(item.image_link).up();
+    for (const extra of item.additional_image_link || []) {
+      entry.ele('g:additional_image_link').txt(extra).up();
+    }
     entry.ele('g:brand').txt(item.brand).up();
+    if (item.product_type) entry.ele('g:product_type').txt(item.product_type).up();
+    if (item.color) entry.ele('g:color').txt(item.color).up();
+    if (item.size) entry.ele('g:size').txt(item.size).up();
     entry.ele('g:origin_country').txt(item.origin_country).up();
     entry.up();
   }
