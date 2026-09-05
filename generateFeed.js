@@ -74,14 +74,18 @@ async function fetchShescaleProducts() {
     // Standard envelope: {success, data: {products: [...], total: N}}
     const data = json && typeof json === 'object' && 'data' in json ? json.data : json;
     const items = data?.products || [];
-    const total = Number(data?.total || items.length);
 
     all.push(...items);
 
-    if (all.length >= total || items.length === 0) break;
+    // Stop when we get a short page (last page) or an empty page —
+    // do NOT rely on a `total` field, since some APIs omit it or name
+    // it differently, which previously caused pagination to stop after
+    // page 1 (masking any products beyond the first ~100).
+    if (items.length < limit) break;
     page += 1;
   }
 
+  console.log(`Fetched ${all.length} total products from SheScale across ${page} page(s)`);
   return all;
 }
 
@@ -246,7 +250,7 @@ async function generateFeedXml() {
     entry.up();
   }
 
-  return doc.end({ prettyPrint: true });
+  return { xml: doc.end({ prettyPrint: true }), productCount: products.length, itemCount: items.length };
 }
 
 module.exports = { generateFeedXml };
