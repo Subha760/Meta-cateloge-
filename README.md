@@ -78,3 +78,54 @@ match the landing page price.
 
 Set `SYNC_PRICE_TO_SHOP=false` if you'd rather set prices manually on
 SheScale and just use this service as a read-only feed.
+
+## WhatsApp orders (catalog chats + click-to-WhatsApp ads)
+
+When a customer orders through your WhatsApp catalog (including via a
+"Click to WhatsApp" ad), WhatsApp sends a webhook — but notably, **it
+does not include a delivery address**. This service handles that by:
+
+1. Receiving the order webhook, noting which products/quantities were ordered
+2. Replying on WhatsApp asking for the customer's address + PIN code
+3. Treating their next message as the address, extracting the PIN code
+4. Forwarding the completed order to SheScale (`POST /orders`, same call
+   your WooCommerce plugin makes), as Cash on Delivery
+
+### Setup
+
+1. In Meta for Developers, open your WhatsApp Business app → **API Setup**
+2. Note your **Phone number ID**, generate a permanent **access token**
+   (System User token, not the 24h test token), and find your **App
+   Secret** under App Settings → Basic
+3. Add all four `WHATSAPP_*` env vars from `.env.example` to Render
+4. Under **WhatsApp → Configuration → Webhook**, set:
+   - Callback URL: `https://<your-render-url>/webhook/whatsapp`
+   - Verify token: same value as `WHATSAPP_VERIFY_TOKEN`
+5. Subscribe to the **messages** webhook field
+6. Send a test order from WhatsApp to confirm it flows through — check
+   Render logs for `Order from ... originated from ad ...` if it came
+   through an ad click, or just the order processing if from the catalog directly
+
+### Known limitation
+
+Pending orders (waiting on the customer's address) are held in memory,
+not a database. On the free Render tier this is fine for normal use, but
+a mid-conversation restart would lose that pending order. If this
+becomes an issue, ask me to move it to Render's Key Value store instead.
+
+## SheScale → this service (instant price/stock updates)
+
+Separate from the WhatsApp webhook above, SheScale itself can notify
+this service the moment a price or stock level changes on their end —
+so your Meta feed updates within seconds instead of waiting up to
+`CACHE_TTL_MINUTES`.
+
+1. On the SheScale seller dashboard: **Integrations → SheScale API &
+   Webhooks → Webhooks**
+2. Paste this URL: `https://<your-render-url>/webhook/shescale`
+3. SheScale will show you a signing secret once — copy it into
+   `SHESCALE_WEBHOOK_SECRET` on Render
+4. On `product.price_changed` / `product.stock_changed`, this service
+   immediately re-fetches and rebuilds the feed. `order.status_changed`
+   and `order.tracking_updated` events are logged for now — worth wiring
+   those to a WhatsApp status message to the customer later if you want it.
