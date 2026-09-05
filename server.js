@@ -19,13 +19,18 @@ const REFRESH_SECRET = process.env.REFRESH_SECRET; // optional shared secret to 
 let cachedFeed = null;
 let lastGeneratedAt = null;
 let lastError = null;
+let lastProductCount = null;
+let lastItemCount = null;
 
 async function refreshFeed() {
   try {
-    cachedFeed = await generateFeedXml();
+    const result = await generateFeedXml();
+    cachedFeed = result.xml;
+    lastProductCount = result.productCount;
+    lastItemCount = result.itemCount;
     lastGeneratedAt = new Date();
     lastError = null;
-    console.log(`[${lastGeneratedAt.toISOString()}] Feed refreshed OK`);
+    console.log(`[${lastGeneratedAt.toISOString()}] Feed refreshed OK — ${result.productCount} products, ${result.itemCount} feed items`);
   } catch (err) {
     lastError = err.message;
     console.error(`Feed refresh failed: ${err.message}`);
@@ -47,6 +52,8 @@ app.get('/status', (req, res) => {
   res.json({
     lastGeneratedAt,
     lastError,
+    lastProductCount,
+    lastItemCount,
     cacheTtlMinutes: CACHE_TTL_MINUTES,
   });
 });
