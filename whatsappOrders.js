@@ -142,6 +142,7 @@ async function handleWebhookEvent(body) {
       for (const message of value.messages || []) {
         const from = message.from; // wa_id, e.g. "9198xxxxxxxx"
         const adRef = message.referral && message.referral.source_type === 'ad' ? message.referral : null;
+        console.log(`Incoming WhatsApp message from ${from}: type=${message.type}`);
 
         if (message.type === 'order') {
           const items = (message.order?.product_items || []).map((pi) => {
