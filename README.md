@@ -127,5 +127,29 @@ so your Meta feed updates within seconds instead of waiting up to
    `SHESCALE_WEBHOOK_SECRET` on Render
 4. On `product.price_changed` / `product.stock_changed`, this service
    immediately re-fetches and rebuilds the feed. `order.status_changed`
-   and `order.tracking_updated` events are logged for now — worth wiring
-   those to a WhatsApp status message to the customer later if you want it.
+   also triggers a Meta Conversions API purchase report (see below).
+   `order.tracking_updated` is logged for now.
+
+## Meta Conversions API (purchase tracking without a website pixel)
+
+Since store.choicematrix.in is SheScale-hosted (no way to install a
+Meta Pixel script on the page), purchases are instead reported
+server-side: whenever SheScale's `order.status_changed` webhook fires,
+this service fetches the order's value/phone and sends a `Purchase`
+event straight to Meta's Conversions API.
+
+**Unverified assumption:** this fetches order details from
+`GET /orders/{orderNumber}` on the SheScale partner API — that
+endpoint wasn't directly confirmed anywhere in the WooCommerce plugin
+source (it only ever creates orders, never reads them back). Check
+api.shescale.in/api/docs to confirm the real path and field names for
+fetching a single order; if it differs, update `fetchOrderDetails()`
+in `metaConversions.js` accordingly. Watch the Render logs after your
+first real order — errors there will show exactly what needs fixing.
+
+### Setup
+1. Meta Business Suite → **Events Manager → Connect Data Sources → Web**
+   → create a Pixel (you don't need to install it anywhere, just create it)
+2. Note the **Pixel ID**
+3. Same pixel → **Settings → Conversions API → Generate access token**
+4. Add both to Render as `META_PIXEL_ID` and `META_CAPI_ACCESS_TOKEN`
