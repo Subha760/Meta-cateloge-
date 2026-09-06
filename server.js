@@ -9,6 +9,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { generateFeedXml } = require('./generateFeed');
 const { verifySignature, handleWebhookEvent, WHATSAPP_VERIFY_TOKEN } = require('./whatsappOrders');
+const { handleOrderStatusChanged } = require('./metaConversions');
 
 const SHESCALE_WEBHOOK_SECRET = process.env.SHESCALE_WEBHOOK_SECRET;
 
@@ -130,7 +131,12 @@ app.post('/webhook/shescale', express.raw({ type: 'application/json' }), async (
     if (event === 'product.price_changed' || event === 'product.stock_changed') {
       await refreshFeed(); // pulls fresh data, re-syncs prices, rebuilds the feed
     }
-    // order.status_changed / order.tracking_updated: logged for now.
+    if (event === 'order.status_changed') {
+      const orderNumber = payload.data?.orderNumber;
+      const status = payload.data?.status;
+      await handleOrderStatusChanged(orderNumber, status);
+    }
+    // order.tracking_updated: logged for now.
     // Could be wired to message the customer on WhatsApp with their
     // order status if you want that later.
   } catch (err) {
