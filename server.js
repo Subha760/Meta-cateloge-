@@ -144,6 +144,28 @@ app.post('/webhook/shescale', express.raw({ type: 'application/json' }), async (
   }
 });
 
+// Temporary: fires one PageView event to activate the Meta Pixel for
+// Conversions API token generation. Safe to remove once the pixel shows
+// as "active" in Events Manager — served over real HTTPS so the browser
+// doesn't block it like it would a local file:// page.
+app.get('/activate-pixel', (req, res) => {
+  res.type('html').send(`<!DOCTYPE html>
+<html><head>
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '2333164030753605');
+fbq('track', 'PageView');
+</script>
+</head><body><h1>Pixel activation page</h1><p>Event fired. You can close this tab.</p></body></html>`);
+});
+
 app.listen(PORT, async () => {
   console.log(`Meta feed service listening on port ${PORT}`);
   await refreshFeed(); // generate once on boot so /meta-feed.xml isn't empty
