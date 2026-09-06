@@ -81,8 +81,10 @@ app.get('/webhook/whatsapp', (req, res) => {
 
 // Needs the raw body (not pre-parsed JSON) to verify Meta's HMAC signature
 app.post('/webhook/whatsapp', express.raw({ type: 'application/json' }), async (req, res) => {
+  console.log('WhatsApp webhook POST received');
   const signature = req.header('x-hub-signature-256');
   if (!verifySignature(req.body, signature)) {
+    console.error('WhatsApp webhook signature verification FAILED');
     return res.sendStatus(403);
   }
   // Acknowledge immediately — Meta expects a fast 200, process after
